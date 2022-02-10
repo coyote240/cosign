@@ -1256,6 +1256,7 @@ go.uber.org/automaxprocs/maxprocs
 # go.uber.org/multierr v1.7.0
 go.uber.org/multierr
 # go.uber.org/zap v1.20.0
+## explicit
 go.uber.org/zap
 go.uber.org/zap/buffer
 go.uber.org/zap/internal/bufferpool
@@ -2089,6 +2090,8 @@ knative.dev/pkg/webhook/json
 knative.dev/pkg/webhook/resourcesemantics
 knative.dev/pkg/webhook/resourcesemantics/defaulting
 knative.dev/pkg/webhook/resourcesemantics/validation
+# sigs.k8s.io/controller-tools v0.4.1
+## explicit
 # sigs.k8s.io/structured-merge-diff/v4 v4.2.1
 ## explicit
 sigs.k8s.io/structured-merge-diff/v4/fieldpath

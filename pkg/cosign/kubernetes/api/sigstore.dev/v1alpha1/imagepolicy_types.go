@@ -9,12 +9,15 @@ import (
 // +genreconciler
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=clusterimagepolicies,scope=Cluster
+// +kubebuilder:storageversion
 type ClusterImagePolicy struct {
 	metav1.TypeMeta `json:",inline"`
-	//+optional
+	// +kubebuilder:validation:Optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	//+optional
+	// +kubebuilder:validation:Optional
 	Spec ClusterImagePolicySpec `json:"spec"`
 }
 
@@ -24,22 +27,31 @@ var (
 )
 
 type ClusterImagePolicySpec struct {
+	// +kubebuilder:validation:MinItems=1
 	Images []ImagePattern `json:"images"`
 }
 
 type ImagePattern struct {
+	// +kubebuilder:validation:Required
 	Pattern string `json:"pattern"`
-	//+optional
+
+	// +kubebuilder:validation:MinItems=1
 	Authorities []Authority `json:"authorities"`
 }
 
+// +kubebuilder:validation:MinProperties=1
 type Authority struct {
 	Key     KeyRef     `json:"key"`
 	Keyless KeylessRef `json:"keyless"`
-	Sources []Source   `json:"source"`
-	CTLog   TLog       `json:"ctlog"`
+
+	// +kubebuilder:validation:Optional
+	Sources []Source `json:"source"`
+
+	// +kubebuilder:validation:Optional
+	CTLog TLog `json:"ctlog"`
 }
 
+// +kubebuilder:validation:MinProperties=1
 type KeyRef struct {
 	SecretRef SecretRef `json:"secretRef"`
 	Data      string    `json:"data"`
@@ -47,28 +59,38 @@ type KeyRef struct {
 }
 
 type SecretRef struct {
+	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
 
 type Source struct {
+	// +kubebuilder:validation:Required
 	OCI string `json:"oci"`
 }
 
 type TLog struct {
+	// +kubebuilder:validation:Required
 	URL string `json:"url"`
 }
 
+// +kubebuilder:validation:MaxProperties=1
 type KeylessRef struct {
 	Identities []Identity `json:"identities"`
 	CAKey      CAKey      `json:"ca-key"`
 }
 
 type Identity struct {
-	Issuer  string `json:"issuer"`
+	// +kubebuilder:validation:Required
+	Issuer string `json:"issuer"`
+
+	// +kubebuilder:validation:Required
 	Subject string `json:"subject"`
 }
 
 type CAKey struct {
+	// +kubebuilder:validation:Required
 	Name string `json:"name"`
+
+	// +kubebuilder:validation:Required
 	Data string `json:"data"`
 }

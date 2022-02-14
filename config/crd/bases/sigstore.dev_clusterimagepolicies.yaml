@@ -62,10 +62,6 @@ spec:
                                 required:
                                 - name
                                 type: object
-                            required:
-                            - data
-                            - kms
-                            - secretRef
                             type: object
                           keyless:
                             maxProperties: 1
@@ -92,9 +88,6 @@ spec:
                                   - subject
                                   type: object
                                 type: array
-                            required:
-                            - ca-key
-                            - identities
                             type: object
                           source:
                             items:
@@ -105,9 +98,6 @@ spec:
                               - oci
                               type: object
                             type: array
-                        required:
-                        - key
-                        - keyless
                         type: object
                       minItems: 1
                       type: array
@@ -119,9 +109,9 @@ spec:
                   type: object
                 minItems: 1
                 type: array
-            required:
-            - images
             type: object
+        required:
+        - metadata
         type: object
     served: true
     storage: true

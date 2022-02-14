@@ -1,0 +1,60 @@
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook
+      namespace: cosign-system
+      path: /default-sigstore-dev-v1alpha1-clusterimagepolicy
+  failurePolicy: Fail
+  matchPolicy: Equivalent
+  name: defaulting.clusterimagepolicy.sigstore.dev
+  rules:
+  - apiGroups:
+    - sigstore.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusterimagepolicies
+  sideEffects: None
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook
+      namespace: cosign-system
+      path: /validate-sigstore-dev-v1alpha1-clusterimagepolicy
+  failurePolicy: Fail
+  matchPolicy: Equivalent
+  name: validation.clusterimagepolicy.sigstore.dev
+  rules:
+  - apiGroups:
+    - sigstore.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusterimagepolicies
+  sideEffects: None

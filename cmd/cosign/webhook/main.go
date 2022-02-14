@@ -36,6 +36,7 @@ import (
 	"knative.dev/pkg/webhook/resourcesemantics/defaulting"
 	"knative.dev/pkg/webhook/resourcesemantics/validation"
 
+	"github.com/sigstore/cosign/pkg/cosign/kubernetes/api/sigstore.dev/v1alpha1"
 	cwebhook "github.com/sigstore/cosign/pkg/cosign/kubernetes/webhook"
 	"github.com/sigstore/cosign/pkg/version"
 )
@@ -138,3 +139,24 @@ func NewMutatingAdmissionController(ctx context.Context, cmw configmap.Watcher) 
 		false,
 	)
 }
+
+var callbacks = map[schema.GroupVersionKind]validation.Callback{}
+
+func NewPolicyValidatingAdmissionController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
+	return validation.NewAdmissionController(
+		ctx,
+		"validating-webhook-configuration",
+		"/validate-sigstore-dev-v1alpha1-clusterimagepolicy",
+		map[schema.GroupVersionKind]resourcesemantics.GenericCRD{
+			v1alpha1.SchemeGroupVersion.WithKind("ClusterImagePolicy"): &v1alpha1.ClusterImagePolicy{},
+		},
+		func(ctx context.Context) context.Context {
+			return ctx
+		},
+		true,
+		callbacks,
+	)
+}
+
+//func NewPolicyMutatingAdmissionController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
+//}

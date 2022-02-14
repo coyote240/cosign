@@ -1,3 +1,4 @@
+// +kubebuilder:validation:Optional
 package v1alpha1
 
 import (
@@ -14,11 +15,10 @@ import (
 // +kubebuilder:storageversion
 type ClusterImagePolicy struct {
 	metav1.TypeMeta `json:",inline"`
-	// +kubebuilder:validation:Optional
-	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// +kubebuilder:validation:Optional
-	Spec ClusterImagePolicySpec `json:"spec"`
+	// +kubebuilder:validation:Required
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              ClusterImagePolicySpec `json:"spec"`
 }
 
 var (
@@ -35,6 +35,7 @@ type ImagePattern struct {
 	// +kubebuilder:validation:Required
 	Pattern string `json:"pattern"`
 
+	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	Authorities []Authority `json:"authorities"`
 }
@@ -43,12 +44,8 @@ type ImagePattern struct {
 type Authority struct {
 	Key     KeyRef     `json:"key"`
 	Keyless KeylessRef `json:"keyless"`
-
-	// +kubebuilder:validation:Optional
-	Sources []Source `json:"source"`
-
-	// +kubebuilder:validation:Optional
-	CTLog TLog `json:"ctlog"`
+	Sources []Source   `json:"source"`
+	CTLog   TLog       `json:"ctlog"`
 }
 
 // +kubebuilder:validation:MinProperties=1

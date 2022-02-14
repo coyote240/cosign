@@ -100,6 +100,10 @@ cross:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o cosign-$(GOOS)-$(GOARCH) ./cmd/cosign; \
 	shasum -a 256 cosign-$(GOOS)-$(GOARCH) > cosign-$(GOOS)-$(GOARCH).sha256 ))) \
 
+.PHONY: manifests
+manifests:
+	controller-gen object crd:trivialVersions=true,preserveUnknownFields=false rbac:roleName=cosigned-rbac webhook paths="./pkg/cosign/kubernetes/api/..." output:crd:artifacts:config=config/crd/bases
+
 #####################
 # lint / test section
 #####################
@@ -145,10 +149,15 @@ ko:
 
 .PHONY: ko-local
 ko-local:
+	#LDFLAGS="$(LDFLAGS)" GIT_HASH=$(GIT_HASH) GIT_VERSION=$(GIT_VERSION) \
+	#ko publish --base-import-paths --bare \
+	#	--tags $(GIT_VERSION) --tags $(GIT_HASH) --local \
+	#	github.com/sigstore/cosign/cmd/cosign
+
 	LDFLAGS="$(LDFLAGS)" GIT_HASH=$(GIT_HASH) GIT_VERSION=$(GIT_VERSION) \
 	ko publish --base-import-paths --bare \
 		--tags $(GIT_VERSION) --tags $(GIT_HASH) --local \
-		github.com/sigstore/cosign/cmd/cosign
+		github.com/sigstore/cosign/cmd/cosign/webhook
 
 ##################
 # help

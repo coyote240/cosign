@@ -8,7 +8,7 @@ const (
 	GroupName = "sigstore.dev"
 )
 
-var SchemeGroupVersion = GroupVersion
+var SchemeGroupVersion = schema.GroupVersion{Group: "sigstore.dev", Version: "v1alpha1"}
 
 func Resource(resource string) schema.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()

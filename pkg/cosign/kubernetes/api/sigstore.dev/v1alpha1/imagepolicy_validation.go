@@ -3,17 +3,14 @@ package v1alpha1
 import (
 	"context"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 )
 
-func (ip *ClusterImagePolicy) Validate(ctx context.Context) *apis.FieldError {
-	return ip.Spec.Validate(ctx).ViaField("metadata")
-}
+// +kubebuilder:webhook:verbs=create;update,path=/validate-sigstore-dev-v1alpha1-clusterimagepolicy,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=sigstore.dev,resources=clusterimagepolicies,versions=v1alpha1,name=validation.clusterimagepolicy.sigstore.dev,sideEffects=None,admissionReviewVersions=v1;v1beta1
 
-func (metadata *metav1.ObjectMeta) Validate(ctx context.Context) *apis.FieldError {
-	if metadata.Name != "image-policy" {
-		return apis.ErrInvalidValue(metadata.Name, "metadata.name", "metadata.name must be \"image-policy\"")
+func (ip *ClusterImagePolicy) Validate(ctx context.Context) *apis.FieldError {
+	if ip.Name != "image-policy" {
+		return apis.ErrInvalidValue(ip.Name, "metadata.name", "metadata.name must be \"image-policy\"")
 	}
 	return nil
 }

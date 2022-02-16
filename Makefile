@@ -103,6 +103,13 @@ cross:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o cosign-$(GOOS)-$(GOARCH) ./cmd/cosign; \
 	shasum -a 256 cosign-$(GOOS)-$(GOARCH) > cosign-$(GOOS)-$(GOARCH).sha256 ))) \
 
+.PHONY: manifests
+manifests:
+	controller-gen object crd:trivialVersions=true,preserveUnknownFields=false rbac:roleName=cosigned-rbac webhook paths="./pkg/cosign/kubernetes/apis/..." output:crd:artifacts:config=config output:webhook:artifacts:config=config
+	$(eval SVCNAME=$(shell yq e '.metadata.name' ./config/400-webhook-service.yaml))
+	$(eval SVCNAMESPACE=$(shell yq e '.metadata.namespace' ./config/400-webhook-service.yaml))
+	yq --inplace e 'with(.webhooks[0].clientConfig.service; .name = "$(SVCNAME)" | .namespace = "$(SVCNAMESPACE)")' ./config/manifests.yaml
+
 #####################
 # lint / test section
 #####################
@@ -162,6 +169,11 @@ ko-local:
 	KOCACHE=$(KOCACHE_PATH) ko build --base-import-paths --bare \
 		--tags $(GIT_VERSION) --tags $(GIT_HASH) --local \
 		github.com/sigstore/cosign/cmd/cosign
+
+	LDFLAGS="$(LDFLAGS)" GIT_HASH=$(GIT_HASH) GIT_VERSION=$(GIT_VERSION) \
+	ko publish --base-import-paths --bare \
+		--tags $(GIT_VERSION) --tags $(GIT_HASH) --local \
+		github.com/sigstore/cosign/cmd/cosign/webhook
 
 ##################
 # help

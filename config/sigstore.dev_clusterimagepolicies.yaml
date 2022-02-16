@@ -1,0 +1,123 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.4.1
+  creationTimestamp: null
+  name: clusterimagepolicies.sigstore.dev
+spec:
+  group: sigstore.dev
+  names:
+    kind: ClusterImagePolicy
+    listKind: ClusterImagePolicyList
+    plural: clusterimagepolicies
+    singular: clusterimagepolicy
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              images:
+                items:
+                  properties:
+                    authorities:
+                      items:
+                        minProperties: 1
+                        properties:
+                          ctlog:
+                            properties:
+                              url:
+                                type: string
+                            required:
+                            - url
+                            type: object
+                          key:
+                            minProperties: 1
+                            properties:
+                              data:
+                                type: string
+                              kms:
+                                type: string
+                              secretRef:
+                                properties:
+                                  name:
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                            type: object
+                          keyless:
+                            maxProperties: 1
+                            properties:
+                              ca-key:
+                                properties:
+                                  data:
+                                    type: string
+                                  name:
+                                    type: string
+                                required:
+                                - data
+                                - name
+                                type: object
+                              identities:
+                                items:
+                                  properties:
+                                    issuer:
+                                      type: string
+                                    subject:
+                                      type: string
+                                  required:
+                                  - issuer
+                                  - subject
+                                  type: object
+                                type: array
+                            type: object
+                          source:
+                            items:
+                              properties:
+                                oci:
+                                  type: string
+                              required:
+                              - oci
+                              type: object
+                            type: array
+                        type: object
+                      minItems: 1
+                      type: array
+                    pattern:
+                      type: string
+                  required:
+                  - authorities
+                  - pattern
+                  type: object
+                minItems: 1
+                type: array
+            type: object
+        required:
+        - metadata
+        type: object
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

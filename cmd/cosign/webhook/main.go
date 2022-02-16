@@ -67,6 +67,8 @@ func main() {
 		certificates.NewController,
 		NewValidatingAdmissionController,
 		NewMutatingAdmissionController,
+		NewPolicyValidatingAdmissionController,
+		NewPolicyMutatingAdmissionController,
 	)
 }
 
@@ -140,12 +142,10 @@ func NewMutatingAdmissionController(ctx context.Context, cmw configmap.Watcher) 
 	)
 }
 
-var callbacks = map[schema.GroupVersionKind]validation.Callback{}
-
 func NewPolicyValidatingAdmissionController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
 	return validation.NewAdmissionController(
 		ctx,
-		"validating-webhook-configuration",
+		"validating.clusterimagepolicy.sigstore.dev",
 		"/validate-sigstore-dev-v1alpha1-clusterimagepolicy",
 		map[schema.GroupVersionKind]resourcesemantics.GenericCRD{
 			v1alpha1.SchemeGroupVersion.WithKind("ClusterImagePolicy"): &v1alpha1.ClusterImagePolicy{},
@@ -154,9 +154,20 @@ func NewPolicyValidatingAdmissionController(ctx context.Context, cmw configmap.W
 			return ctx
 		},
 		true,
-		callbacks,
 	)
 }
 
-//func NewPolicyMutatingAdmissionController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
-//}
+func NewPolicyMutatingAdmissionController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
+	return defaulting.NewAdmissionController(
+		ctx,
+		"defaulting.clusterimagepolicy.sigstore.dev",
+		"/default-sigstore-dev-v1alpha1-clusterimagepolicy",
+		map[schema.GroupVersionKind]resourcesemantics.GenericCRD{
+			v1alpha1.SchemeGroupVersion.WithKind("ClusterImagePolicy"): &v1alpha1.ClusterImagePolicy{},
+		},
+		func(ctx context.Context) context.Context {
+			return ctx
+		},
+		true,
+	)
+}

@@ -4,16 +4,14 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   creationTimestamp: null
-  name: mutating-webhook-configuration
+  name: defaulting.clusterimagepolicy.sigstore.dev
 webhooks:
 - admissionReviewVersions:
   - v1
-  - v1beta1
   clientConfig:
     service:
-      name: webhook-service
-      namespace: system
-      path: /default-sigstore-dev-v1alpha1-clusterimagepolicy
+      name: webhook
+      namespace: cosign-system
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: defaulting.clusterimagepolicy.sigstore.dev
@@ -34,16 +32,14 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   creationTimestamp: null
-  name: validating-webhook-configuration
+  name: validation.clusterimagepolicy.sigstore.dev
 webhooks:
 - admissionReviewVersions:
   - v1
-  - v1beta1
   clientConfig:
     service:
-      name: webhook-service
-      namespace: system
-      path: /validate-sigstore-dev-v1alpha1-clusterimagepolicy
+      name: webhook
+      namespace: cosign-system
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: validation.clusterimagepolicy.sigstore.dev

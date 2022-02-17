@@ -10,11 +10,9 @@ import (
 // +kubebuilder:resource:path=clusterimagepolicies,scope=Cluster
 // +kubebuilder:storageversion
 type ClusterImagePolicy struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// +kubebuilder:validation:Required
+	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ClusterImagePolicySpec `json:"spec"`
+	Spec              ClusterImagePolicySpec `json:"spec,omitempty"`
 }
 
 var (
@@ -23,67 +21,50 @@ var (
 )
 
 type ClusterImagePolicySpec struct {
-	// +kubebuilder:validation:MinItems=1
-	Images []ImagePattern `json:"images"`
+	Images []ImagePattern `json:"images,omitempty"`
 }
 
 type ImagePattern struct {
-	// +kubebuilder:validation:Required
-	Pattern string `json:"pattern"`
-
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinItems=1
-	Authorities []Authority `json:"authorities"`
+	Pattern     string      `json:"pattern,omitempty"`
+	Authorities []Authority `json:"authorities,anyOf,omitempty"`
 }
 
-// +kubebuilder:validation:MinProperties=1
 type Authority struct {
-	Key     KeyRef     `json:"key"`
-	Keyless KeylessRef `json:"keyless"`
-	Sources []Source   `json:"source"`
-	CTLog   TLog       `json:"ctlog"`
+	Key     KeyRef     `json:"key,omitempty"`
+	Keyless KeylessRef `json:"keyless,omitempty"`
+	Sources []Source   `json:"source,anyOf,omitempty"`
+	CTLog   TLog       `json:"ctlog,omitempty"`
 }
 
-// +kubebuilder:validation:MinProperties=1
 type KeyRef struct {
-	SecretRef SecretRef `json:"secretRef"`
-	Data      string    `json:"data"`
-	KMS       string    `json:"kms"`
+	SecretRef SecretRef `json:"secretRef,omitempty"`
+	Data      string    `json:"data,omitempty"`
+	KMS       string    `json:"kms,omitempty"`
 }
 
 type SecretRef struct {
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 }
 
 type Source struct {
-	// +kubebuilder:validation:Required
 	OCI string `json:"oci"`
 }
 
 type TLog struct {
-	// +kubebuilder:validation:Required
-	URL string `json:"url"`
+	URL string `json:"url,omitempty"`
 }
 
-// +kubebuilder:validation:MaxProperties=1
 type KeylessRef struct {
-	Identities []Identity `json:"identities"`
-	CAKey      CAKey      `json:"ca-key"`
+	Identities []Identity `json:"identities,anyOf,omitempty"`
+	CAKey      CAKey      `json:"ca-key,omitempty"`
 }
 
 type Identity struct {
-	// +kubebuilder:validation:Required
-	Issuer string `json:"issuer"`
-
-	// +kubebuilder:validation:Required
-	Subject string `json:"subject"`
+	Issuer  string `json:"issuer,omitempty"`
+	Subject string `json:"subject,omitempty"`
 }
 
 type CAKey struct {
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-
-	// +kubebuilder:validation:Required
-	Data string `json:"data"`
+	Name string `json:"name,omitempty"`
+	Data string `json:"data,omitempty"`
 }

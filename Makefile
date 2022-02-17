@@ -171,7 +171,7 @@ ko-local:
 		github.com/sigstore/cosign/cmd/cosign
 
 	LDFLAGS="$(LDFLAGS)" GIT_HASH=$(GIT_HASH) GIT_VERSION=$(GIT_VERSION) \
-	ko publish --base-import-paths --bare \
+	KOCACHE=$(KOCACHE_PATH) ko build --base-import-paths --bare \
 		--tags $(GIT_VERSION) --tags $(GIT_HASH) --local \
 		github.com/sigstore/cosign/cmd/cosign/webhook
 

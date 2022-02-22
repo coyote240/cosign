@@ -105,10 +105,7 @@ cross:
 
 .PHONY: manifests
 manifests:
-	controller-gen object crd:trivialVersions=true,preserveUnknownFields=false rbac:roleName=cosigned-rbac webhook paths="./pkg/cosign/kubernetes/apis/..." output:crd:artifacts:config=config output:webhook:artifacts:config=config
-	$(eval SVCNAME=$(shell yq e '.metadata.name' ./config/400-webhook-service.yaml))
-	$(eval SVCNAMESPACE=$(shell yq e '.metadata.namespace' ./config/400-webhook-service.yaml))
-	yq --inplace e 'with(.webhooks[0].clientConfig.service; .name = "$(SVCNAME)" | .namespace = "$(SVCNAMESPACE)")' ./config/manifests.yaml
+	controller-gen object crd:trivialVersions=true,preserveUnknownFields=false paths="./pkg/cosign/kubernetes/apis/..." output:crd:artifacts:config=config
 
 #####################
 # lint / test section

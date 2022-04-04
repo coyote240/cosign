@@ -15,9 +15,13 @@
 package clusterimagepolicy
 
 import (
+	"context"
 	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/pem"
 
 	"github.com/sigstore/cosign/pkg/apis/cosigned/v1alpha1"
+	"knative.dev/pkg/logging"
 )
 
 // ClusterImagePolicy defines the images that go through verification
@@ -52,4 +56,82 @@ type KeyRef struct {
 	KMS string `json:"kms,omitempty"`
 	// +optional
 	PublicKeys []*ecdsa.PublicKey `json:"publicKeys,omitempty"`
+}
+
+func ConvertClusterImagePolicyV1alpha1ToInternal(ctx context.Context, in *v1alpha1.ClusterImagePolicy) (*ClusterImagePolicy, error) {
+	outAuthorities := make([]Authority, 0)
+	for _, authority := range in.Spec.Authorities {
+		outAuthority, err := convertAuthorityV1Alpha1ToInternal(ctx, &authority)
+		if err != nil {
+			return nil, err
+		}
+		outAuthorities = append(outAuthorities, outAuthority)
+	}
+
+	return &ClusterImagePolicy{
+		Images:      in.Spec.Images,
+		Authorities: outAuthorities,
+	}, nil
+}
+
+func convertAuthorityV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.Authority) (Authority, error) {
+	keyRef, err := convertKeyRefV1Alpha1ToInternal(ctx, in.Key)
+	if err != nil {
+		return Authority{}, err
+	}
+	return Authority{
+		Key:     keyRef,
+		Keyless: in.Keyless,
+		Sources: in.Sources,
+		CTLog:   in.CTLog,
+	}, nil
+}
+
+func convertKeyRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeyRef) (*KeyRef, error) {
+	if in == nil {
+		return nil, nil
+	}
+
+	var publicKeys []*ecdsa.PublicKey
+	var err error
+	if in.Data != "" {
+		publicKeys, err = ConvertKeyDataToPublicKeys(ctx, in.Data)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &KeyRef{
+		KMS:        in.KMS,
+		PublicKeys: publicKeys,
+	}, nil
+}
+
+func ConvertKeyDataToPublicKeys(ctx context.Context, pubKey string) ([]*ecdsa.PublicKey, error) {
+	keys := []*ecdsa.PublicKey{}
+
+	logging.FromContext(ctx).Debugf("Got public key: %v", pubKey)
+
+	pems := parsePems([]byte(pubKey))
+	for _, p := range pems {
+		key, err := x509.ParsePKIXPublicKey(p.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key.(*ecdsa.PublicKey))
+	}
+	return keys, nil
+}
+
+func parsePems(b []byte) []*pem.Block {
+	p, rest := pem.Decode(b)
+	if p == nil {
+		return nil
+	}
+	pems := []*pem.Block{p}
+
+	if rest != nil {
+		return append(pems, parsePems(rest)...)
+	}
+	return pems
 }

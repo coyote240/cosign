@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"testing"
 
+	internalcip "github.com/sigstore/cosign/internal/pkg/apis/cosigned"
 	logtesting "knative.dev/pkg/logging/testing"
 
 	"github.com/sigstore/cosign/pkg/apis/config"
@@ -591,7 +592,7 @@ func patchKMS(ctx context.Context, t *testing.T, kmsKey string) clientgotesting.
 		t.Fatalf("Failed to read KMS key ID %q: %v", kmsKey, err)
 	}
 
-	authorityKeys, err := convertAuthorityKeys(ctx, pubKey)
+	authorityKeys, err := internalcip.ConvertKeyDataToPublicKeys(ctx, pubKey)
 	if err != nil || len(authorityKeys) == 0 {
 		t.Fatalf("Failed to convert KMS public key ID %q: %v", kmsKey, err)
 	}

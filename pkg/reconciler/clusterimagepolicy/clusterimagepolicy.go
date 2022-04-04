@@ -16,14 +16,10 @@ package clusterimagepolicy
 
 import (
 	"context"
-	"crypto"
-	"fmt"
-	"strings"
 
 	internalcip "github.com/sigstore/cosign/internal/pkg/apis/cosigned"
 	"github.com/sigstore/cosign/pkg/apis/config"
 	"github.com/sigstore/cosign/pkg/apis/cosigned/v1alpha1"
-	"github.com/sigstore/cosign/pkg/apis/utils"
 	clusterimagepolicyreconciler "github.com/sigstore/cosign/pkg/client/injection/reconciler/cosigned/v1alpha1/clusterimagepolicy"
 	"github.com/sigstore/cosign/pkg/reconciler/clusterimagepolicy/resources"
 	corev1 "k8s.io/api/core/v1"
@@ -36,10 +32,6 @@ import (
 	"knative.dev/pkg/reconciler"
 	"knative.dev/pkg/system"
 	"knative.dev/pkg/tracker"
-
-	sigs "github.com/sigstore/cosign/pkg/signature"
-	"github.com/sigstore/sigstore/pkg/signature/kms"
-	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
 
 	// Register the provider-specific plugins
 	_ "github.com/sigstore/sigstore/pkg/signature/kms/aws"
@@ -68,14 +60,7 @@ var _ clusterimagepolicyreconciler.Finalizer = (*Reconciler)(nil)
 
 // ReconcileKind implements Interface.ReconcileKind.
 func (r *Reconciler) ReconcileKind(ctx context.Context, cip *v1alpha1.ClusterImagePolicy) reconciler.Event {
-	cipCopy, cipErr := r.inlinePublicKeys(ctx, cip)
-	if cipErr != nil {
-		// Handle error here
-		r.handleCIPError(ctx, cip.Name)
-		return cipErr
-	}
-
-	internalCIP, cipErr := internalcip.ConvertClusterImagePolicyV1alpha1ToInternal(ctx, cipCopy)
+	internalCIP, cipErr := internalcip.ConvertClusterImagePolicyV1alpha1ToInternal(ctx, cip, r.tracker, r.secretlister)
 	if cipErr != nil {
 		r.handleCIPError(ctx, cip.Name)
 		// Note that we return the error about the Invalid cip here to make
@@ -144,93 +129,6 @@ func (r *Reconciler) handleCIPError(ctx context.Context, cipName string) {
 	} else if err := r.removeCIPEntry(ctx, existing, cipName); err != nil {
 		logging.FromContext(ctx).Errorf("Failed to get configmap: %v", err)
 	}
-}
-
-// inlinePublicKeys will go through the CIP and try to read the referenced
-// secrets, KMS keys and convert them into inlined data. Makes a copy of the CIP
-// before modifying it and returns the copy.
-func (r *Reconciler) inlinePublicKeys(ctx context.Context, cip *v1alpha1.ClusterImagePolicy) (*v1alpha1.ClusterImagePolicy, error) {
-	ret := cip.DeepCopy()
-	for _, authority := range ret.Spec.Authorities {
-		if authority.Key != nil && authority.Key.SecretRef != nil {
-			if err := r.inlineAndTrackSecret(ctx, ret, authority.Key); err != nil {
-				logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", authority.Key.SecretRef.Name, err)
-				return nil, err
-			}
-		}
-		if authority.Keyless != nil && authority.Keyless.CACert != nil &&
-			authority.Keyless.CACert.SecretRef != nil {
-			if err := r.inlineAndTrackSecret(ctx, ret, authority.Keyless.CACert); err != nil {
-				logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", authority.Keyless.CACert.SecretRef.Name, err)
-				return nil, err
-			}
-		}
-		if authority.Key != nil && authority.Key.KMS != "" {
-			if strings.Contains(authority.Key.KMS, "://") {
-				pubKeyString, err := getKMSPublicKey(ctx, authority.Key.KMS)
-				if err != nil {
-					return nil, err
-				}
-
-				authority.Key.Data = pubKeyString
-				authority.Key.KMS = ""
-			}
-		}
-	}
-	return ret, nil
-}
-
-// getKMSPublicKey returns the public key as a string from the configured KMS service using the key ID
-func getKMSPublicKey(ctx context.Context, keyID string) (string, error) {
-	kmsSigner, err := kms.Get(ctx, keyID, crypto.SHA256)
-	if err != nil {
-		logging.FromContext(ctx).Errorf("Failed to read KMS key ID %q: %v", keyID, err)
-		return "", err
-	}
-	pemBytes, err := sigs.PublicKeyPem(kmsSigner, signatureoptions.WithContext(ctx))
-	if err != nil {
-		return "", err
-	}
-	return string(pemBytes), nil
-}
-
-// inlineSecret will take in a KeyRef and tries to read the Secret, finding the
-// first key from it and will inline it in place of Data and then clear out
-// the SecretRef and return it.
-// Additionally, we set up a tracker so we will be notified if the secret
-// is modified.
-// There's still some discussion about how to handle multiple keys in a secret
-// for now, just grab one from it. For reference, the discussion is here:
-// TODO(vaikas): https://github.com/sigstore/cosign/issues/1573
-func (r *Reconciler) inlineAndTrackSecret(ctx context.Context, cip *v1alpha1.ClusterImagePolicy, keyref *v1alpha1.KeyRef) error {
-	if err := r.tracker.TrackReference(tracker.Reference{
-		APIVersion: "v1",
-		Kind:       "Secret",
-		Namespace:  system.Namespace(),
-		Name:       keyref.SecretRef.Name,
-	}, cip); err != nil {
-		return fmt.Errorf("failed to track changes to secret %q : %w", keyref.SecretRef.Name, err)
-	}
-	secret, err := r.secretlister.Secrets(system.Namespace()).Get(keyref.SecretRef.Name)
-	if err != nil {
-		return err
-	}
-	if len(secret.Data) == 0 {
-		return fmt.Errorf("secret %q contains no data", keyref.SecretRef.Name)
-	}
-	if len(secret.Data) > 1 {
-		return fmt.Errorf("secret %q contains multiple data entries, only one is supported", keyref.SecretRef.Name)
-	}
-	for k, v := range secret.Data {
-		logging.FromContext(ctx).Infof("inlining secret %q key %q", keyref.SecretRef.Name, k)
-		if !utils.IsValidKey(v) {
-			return fmt.Errorf("secret %q contains an invalid public key", keyref.SecretRef.Name)
-		}
-
-		keyref.Data = string(v)
-		keyref.SecretRef = nil
-	}
-	return nil
 }
 
 // removeCIPEntry removes an entry from a CM. If no entry exists, it's a nop.

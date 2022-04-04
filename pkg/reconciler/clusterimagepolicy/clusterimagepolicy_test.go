@@ -587,7 +587,7 @@ func makeConfigMap() *corev1.ConfigMap {
 }
 
 func patchKMS(ctx context.Context, t *testing.T, kmsKey string) clientgotesting.PatchActionImpl {
-	pubKey, err := getKMSPublicKey(ctx, kmsKey)
+	pubKey, err := internalcip.GetKMSPublicKey(ctx, kmsKey)
 	if err != nil {
 		t.Fatalf("Failed to read KMS key ID %q: %v", kmsKey, err)
 	}

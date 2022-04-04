@@ -16,12 +16,22 @@ package clusterimagepolicy
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
+	"strings"
 
 	"github.com/sigstore/cosign/pkg/apis/cosigned/v1alpha1"
+	"github.com/sigstore/cosign/pkg/apis/utils"
+	sigs "github.com/sigstore/cosign/pkg/signature"
+	"github.com/sigstore/sigstore/pkg/signature/kms"
+	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
+	corev1listers "k8s.io/client-go/listers/core/v1"
 	"knative.dev/pkg/logging"
+	"knative.dev/pkg/system"
+	"knative.dev/pkg/tracker"
 )
 
 // ClusterImagePolicy defines the images that go through verification
@@ -48,38 +58,81 @@ type Authority struct {
 // This references a public verification key stored in
 // a secret in the cosign-system namespace.
 type KeyRef struct {
+	// TODO(dennyhoang): Remove Data
 	// Data contains the inline public key
 	// +optional
 	Data string `json:"data,omitempty"`
 	// KMS contains the KMS url of the public key
 	// +optional
-	KMS string `json:"kms,omitempty"`
-	// +optional
 	PublicKeys []*ecdsa.PublicKey `json:"publicKeys,omitempty"`
 }
 
-func ConvertClusterImagePolicyV1alpha1ToInternal(ctx context.Context, in *v1alpha1.ClusterImagePolicy) (*ClusterImagePolicy, error) {
+func ConvertClusterImagePolicyV1alpha1ToInternal(ctx context.Context, in *v1alpha1.ClusterImagePolicy, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (*ClusterImagePolicy, error) {
+	copyIn := in.DeepCopy()
 	outAuthorities := make([]Authority, 0)
-	for _, authority := range in.Spec.Authorities {
-		outAuthority, err := convertAuthorityV1Alpha1ToInternal(ctx, &authority)
+	for _, authority := range copyIn.Spec.Authorities {
+		outAuthority, err := convertAuthorityV1Alpha1ToInternal(ctx, copyIn, authority, rtracker, secretLister)
 		if err != nil {
 			return nil, err
 		}
-		outAuthorities = append(outAuthorities, outAuthority)
+		outAuthorities = append(outAuthorities, *outAuthority)
 	}
 
 	return &ClusterImagePolicy{
-		Images:      in.Spec.Images,
+		Images:      copyIn.Spec.Images,
 		Authorities: outAuthorities,
 	}, nil
 }
 
-func convertAuthorityV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.Authority) (Authority, error) {
-	keyRef, err := convertKeyRefV1Alpha1ToInternal(ctx, in.Key)
-	if err != nil {
-		return Authority{}, err
+func convertAuthorityV1Alpha1ToInternal(ctx context.Context, cipIn *v1alpha1.ClusterImagePolicy, in v1alpha1.Authority, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (*Authority, error) {
+	var publicKey string
+	var err error
+
+	// Key Handle
+	if in.Key != nil {
+		publicKey = in.Key.Data
 	}
-	return Authority{
+
+	if in.Key != nil && in.Key.SecretRef != nil {
+		if publicKey, err = dataAndTrackSecret(ctx, cipIn, in.Key, rtracker, secretLister); err != nil {
+			logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", in.Key.SecretRef.Name, err)
+			return nil, err
+		}
+	} else if in.Key != nil && in.Key.KMS != "" {
+		// Get KMS public Key
+		// convert key data to ecdsaPublicKey
+		if strings.Contains(in.Key.KMS, "://") {
+			publicKey, err = GetKMSPublicKey(ctx, in.Key.KMS)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	var keyRef *KeyRef
+	if in.Key != nil || publicKey != "" {
+		keyRef, err = convertKeyRefV1Alpha1ToInternal(ctx, in.Key, publicKey)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Keyless Handle
+	// TODO(dennyhoang): Adjust keyless flow to parse data ahead of time
+	if in.Keyless != nil &&
+		in.Keyless.CACert != nil &&
+		in.Keyless.CACert.SecretRef != nil {
+
+		if publicKey, err = dataAndTrackSecret(ctx, cipIn, in.Keyless.CACert, rtracker, secretLister); err != nil {
+			logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", in.Keyless.CACert.SecretRef.Name, err)
+			return nil, err
+		} else if publicKey != "" {
+			in.Keyless.CACert.Data = publicKey
+			in.Keyless.CACert.SecretRef = nil
+		}
+	}
+
+	return &Authority{
 		Key:     keyRef,
 		Keyless: in.Keyless,
 		Sources: in.Sources,
@@ -87,22 +140,69 @@ func convertAuthorityV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.Author
 	}, nil
 }
 
-func convertKeyRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeyRef) (*KeyRef, error) {
-	if in == nil {
-		return nil, nil
+// dataAndTrackSecret will take in a KeyRef and tries to read the Secret, finding the
+// first key from it and return the data.
+// Additionally, we set up a tracker so we will be notified if the secret
+// is modified.
+// There's still some discussion about how to handle multiple keys in a secret
+// for now, just grab one from it. For reference, the discussion is here:
+// TODO(vaikas): https://github.com/sigstore/cosign/issues/1573
+func dataAndTrackSecret(ctx context.Context, cip *v1alpha1.ClusterImagePolicy, keyref *v1alpha1.KeyRef, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (string, error) {
+	if err := rtracker.TrackReference(tracker.Reference{
+		APIVersion: "v1",
+		Kind:       "Secret",
+		Namespace:  system.Namespace(),
+		Name:       keyref.SecretRef.Name,
+	}, cip); err != nil {
+		return "", fmt.Errorf("failed to track changes to secret %q : %w", keyref.SecretRef.Name, err)
 	}
+	secret, err := secretLister.Secrets(system.Namespace()).Get(keyref.SecretRef.Name)
+	if err != nil {
+		return "", err
+	}
+	if len(secret.Data) == 0 {
+		return "", fmt.Errorf("secret %q contains no data", keyref.SecretRef.Name)
+	}
+	if len(secret.Data) > 1 {
+		return "", fmt.Errorf("secret %q contains multiple data entries, only one is supported", keyref.SecretRef.Name)
+	}
+	for k, v := range secret.Data {
+		logging.FromContext(ctx).Infof("inlining secret %q key %q", keyref.SecretRef.Name, k)
+		if !utils.IsValidKey(v) {
+			return "", fmt.Errorf("secret %q contains an invalid public key", keyref.SecretRef.Name)
+		}
 
+		return string(v), nil
+	}
+	return "", nil
+}
+
+// GetKMSPublicKey returns the public key as a string from the configured KMS service using the key ID
+func GetKMSPublicKey(ctx context.Context, keyID string) (string, error) {
+	kmsSigner, err := kms.Get(ctx, keyID, crypto.SHA256)
+	if err != nil {
+		logging.FromContext(ctx).Errorf("Failed to read KMS key ID %q: %v", keyID, err)
+		return "", err
+	}
+	pemBytes, err := sigs.PublicKeyPem(kmsSigner, signatureoptions.WithContext(ctx))
+	if err != nil {
+		return "", err
+	}
+	return string(pemBytes), nil
+}
+
+func convertKeyRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeyRef, publicKey string) (*KeyRef, error) {
 	var publicKeys []*ecdsa.PublicKey
 	var err error
-	if in.Data != "" {
-		publicKeys, err = ConvertKeyDataToPublicKeys(ctx, in.Data)
+
+	if publicKey != "" {
+		publicKeys, err = ConvertKeyDataToPublicKeys(ctx, publicKey)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &KeyRef{
-		KMS:        in.KMS,
 		PublicKeys: publicKeys,
 	}, nil
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/sigstore/sigstore/pkg/signature/kms"
 	signatureoptions "github.com/sigstore/sigstore/pkg/signature/options"
 	corev1listers "k8s.io/client-go/listers/core/v1"
+	"knative.dev/pkg/apis"
 	"knative.dev/pkg/logging"
 	"knative.dev/pkg/system"
 	"knative.dev/pkg/tracker"
@@ -48,7 +49,7 @@ type Authority struct {
 	// +optional
 	Key *KeyRef `json:"key,omitempty"`
 	// +optional
-	Keyless *v1alpha1.KeylessRef `json:"keyless,omitempty"`
+	Keyless *KeylessRef `json:"keyless,omitempty"`
 	// +optional
 	Sources []v1alpha1.Source `json:"source,omitempty"`
 	// +optional
@@ -65,6 +66,15 @@ type KeyRef struct {
 	// KMS contains the KMS url of the public key
 	// +optional
 	PublicKeys []*ecdsa.PublicKey `json:"publicKeys,omitempty"`
+}
+
+type KeylessRef struct {
+	// +optional
+	URL *apis.URL `json:"url,omitempty"`
+	// +optional
+	Identities []v1alpha1.Identity `json:"identities,omitempty"`
+	// +optional
+	CACert *KeyRef `json:"ca-cert,omitempty"`
 }
 
 func ConvertClusterImagePolicyV1alpha1ToInternal(ctx context.Context, in *v1alpha1.ClusterImagePolicy, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (*ClusterImagePolicy, error) {
@@ -109,32 +119,27 @@ func convertAuthorityV1Alpha1ToInternal(ctx context.Context, cipIn *v1alpha1.Clu
 		}
 	}
 
+	// Populate KeyRef with publicKeys
 	var keyRef *KeyRef
-	if in.Key != nil || publicKey != "" {
-		keyRef, err = convertKeyRefV1Alpha1ToInternal(ctx, in.Key, publicKey)
+	if publicKey != "" {
+		keyRef, err = convertKeyRefV1Alpha1ToInternal(ctx, publicKey)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	// Keyless Handle
-	// TODO(dennyhoang): Adjust keyless flow to parse data ahead of time
-	if in.Keyless != nil &&
-		in.Keyless.CACert != nil &&
-		in.Keyless.CACert.SecretRef != nil {
-
-		if publicKey, err = dataAndTrackSecret(ctx, cipIn, in.Keyless.CACert, rtracker, secretLister); err != nil {
-			logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", in.Keyless.CACert.SecretRef.Name, err)
+	// Populate KeylessRef
+	var keylessRef *KeylessRef
+	if in.Keyless != nil {
+		keylessRef, err = convertKeylessRefV1Alpha1ToInternal(ctx, in.Keyless, cipIn, rtracker, secretLister)
+		if err != nil {
 			return nil, err
-		} else if publicKey != "" {
-			in.Keyless.CACert.Data = publicKey
-			in.Keyless.CACert.SecretRef = nil
 		}
 	}
 
 	return &Authority{
 		Key:     keyRef,
-		Keyless: in.Keyless,
+		Keyless: keylessRef,
 		Sources: in.Sources,
 		CTLog:   in.CTLog,
 	}, nil
@@ -191,7 +196,7 @@ func GetKMSPublicKey(ctx context.Context, keyID string) (string, error) {
 	return string(pemBytes), nil
 }
 
-func convertKeyRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeyRef, publicKey string) (*KeyRef, error) {
+func convertKeyRefV1Alpha1ToInternal(ctx context.Context, publicKey string) (*KeyRef, error) {
 	var publicKeys []*ecdsa.PublicKey
 	var err error
 
@@ -204,6 +209,29 @@ func convertKeyRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeyRef, p
 
 	return &KeyRef{
 		PublicKeys: publicKeys,
+	}, nil
+}
+
+func convertKeylessRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeylessRef, cipIn *v1alpha1.ClusterImagePolicy, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (*KeylessRef, error) {
+	var publicKey string
+	var err error
+
+	if in != nil &&
+		in.CACert != nil &&
+		in.CACert.SecretRef != nil {
+		publicKey, err = dataAndTrackSecret(ctx, cipIn, in.CACert, rtracker, secretLister)
+		if err != nil {
+			logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", in.CACert.SecretRef.Name, err)
+			return nil, err
+		}
+	}
+
+	return &KeylessRef{
+		URL:        in.URL,
+		Identities: in.Identities,
+		CACert: &KeyRef{
+			Data: publicKey,
+		},
 	}, nil
 }
 

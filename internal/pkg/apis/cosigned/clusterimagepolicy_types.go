@@ -109,8 +109,6 @@ func convertAuthorityV1Alpha1ToInternal(ctx context.Context, cipIn *v1alpha1.Clu
 			return nil, err
 		}
 	} else if in.Key != nil && in.Key.KMS != "" {
-		// Get KMS public Key
-		// convert key data to ecdsaPublicKey
 		if strings.Contains(in.Key.KMS, "://") {
 			publicKey, err = GetKMSPublicKey(ctx, in.Key.KMS)
 			if err != nil {
@@ -143,6 +141,67 @@ func convertAuthorityV1Alpha1ToInternal(ctx context.Context, cipIn *v1alpha1.Clu
 		Sources: in.Sources,
 		CTLog:   in.CTLog,
 	}, nil
+}
+
+func convertKeyRefV1Alpha1ToInternal(ctx context.Context, publicKey string) (*KeyRef, error) {
+	var publicKeys []*ecdsa.PublicKey
+	var err error
+
+	if publicKey != "" {
+		publicKeys, err = ConvertKeyDataToPublicKeys(ctx, publicKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &KeyRef{
+		PublicKeys: publicKeys,
+	}, nil
+}
+
+func convertKeylessRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeylessRef, cipIn *v1alpha1.ClusterImagePolicy, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (*KeylessRef, error) {
+	var publicKey string
+	var keyRef *KeyRef
+	var err error
+
+	if in != nil &&
+		in.CACert != nil &&
+		in.CACert.SecretRef != nil {
+		publicKey, err = dataAndTrackSecret(ctx, cipIn, in.CACert, rtracker, secretLister)
+		if err != nil {
+			logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", in.CACert.SecretRef.Name, err)
+			return nil, err
+		}
+	}
+
+	if publicKey != "" {
+		keyRef, err = convertKeyRefV1Alpha1ToInternal(ctx, publicKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &KeylessRef{
+		URL:        in.URL,
+		Identities: in.Identities,
+		CACert:     keyRef,
+	}, nil
+}
+
+func ConvertKeyDataToPublicKeys(ctx context.Context, pubKey string) ([]*ecdsa.PublicKey, error) {
+	keys := []*ecdsa.PublicKey{}
+
+	logging.FromContext(ctx).Debugf("Got public key: %v", pubKey)
+
+	pems := parsePems([]byte(pubKey))
+	for _, p := range pems {
+		key, err := x509.ParsePKIXPublicKey(p.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key.(*ecdsa.PublicKey))
+	}
+	return keys, nil
 }
 
 // dataAndTrackSecret will take in a KeyRef and tries to read the Secret, finding the
@@ -194,61 +253,6 @@ func GetKMSPublicKey(ctx context.Context, keyID string) (string, error) {
 		return "", err
 	}
 	return string(pemBytes), nil
-}
-
-func convertKeyRefV1Alpha1ToInternal(ctx context.Context, publicKey string) (*KeyRef, error) {
-	var publicKeys []*ecdsa.PublicKey
-	var err error
-
-	if publicKey != "" {
-		publicKeys, err = ConvertKeyDataToPublicKeys(ctx, publicKey)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return &KeyRef{
-		PublicKeys: publicKeys,
-	}, nil
-}
-
-func convertKeylessRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.KeylessRef, cipIn *v1alpha1.ClusterImagePolicy, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (*KeylessRef, error) {
-	var publicKey string
-	var err error
-
-	if in != nil &&
-		in.CACert != nil &&
-		in.CACert.SecretRef != nil {
-		publicKey, err = dataAndTrackSecret(ctx, cipIn, in.CACert, rtracker, secretLister)
-		if err != nil {
-			logging.FromContext(ctx).Errorf("Failed to read secret %q: %v", in.CACert.SecretRef.Name, err)
-			return nil, err
-		}
-	}
-
-	return &KeylessRef{
-		URL:        in.URL,
-		Identities: in.Identities,
-		CACert: &KeyRef{
-			Data: publicKey,
-		},
-	}, nil
-}
-
-func ConvertKeyDataToPublicKeys(ctx context.Context, pubKey string) ([]*ecdsa.PublicKey, error) {
-	keys := []*ecdsa.PublicKey{}
-
-	logging.FromContext(ctx).Debugf("Got public key: %v", pubKey)
-
-	pems := parsePems([]byte(pubKey))
-	for _, p := range pems {
-		key, err := x509.ParsePKIXPublicKey(p.Bytes)
-		if err != nil {
-			return nil, err
-		}
-		keys = append(keys, key.(*ecdsa.PublicKey))
-	}
-	return keys, nil
 }
 
 func parsePems(b []byte) []*pem.Block {

@@ -19,6 +19,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"strings"
@@ -65,7 +66,7 @@ type KeyRef struct {
 	Data string `json:"data,omitempty"`
 	// KMS contains the KMS url of the public key
 	// +optional
-	PublicKeys []*ecdsa.PublicKey `json:"publicKeys,omitempty"`
+	PublicKeys []*ecdsa.PublicKey `json:"-"`
 }
 
 type KeylessRef struct {
@@ -81,10 +82,15 @@ func (k *KeyRef) UnmarshalJSON(data []byte) error {
 	var publicKeys []*ecdsa.PublicKey
 	var err error
 
-	publicKey := string(data)
+	ret := make(map[string]string)
+	if err = json.Unmarshal(data, &ret); err != nil {
+		return err
+	}
 
-	if publicKey != "" {
-		publicKeys, err = ConvertKeyDataToPublicKeys(context.Background(), publicKey)
+	k.Data = ret["data"]
+
+	if ret["data"] != "" {
+		publicKeys, err = ConvertKeyDataToPublicKeys(context.TODO(), ret["data"])
 		if err != nil {
 			return err
 		}
@@ -210,7 +216,9 @@ func convertKeylessRefV1Alpha1ToInternal(ctx context.Context, in *v1alpha1.Keyle
 func ConvertKeyDataToPublicKeys(ctx context.Context, pubKey string) ([]*ecdsa.PublicKey, error) {
 	keys := []*ecdsa.PublicKey{}
 
-	logging.FromContext(ctx).Debugf("Got public key: %v", pubKey)
+	if ctx != nil {
+		logging.FromContext(ctx).Debugf("Got public key: %v", pubKey)
+	}
 
 	pems := parsePems([]byte(pubKey))
 	for _, p := range pems {

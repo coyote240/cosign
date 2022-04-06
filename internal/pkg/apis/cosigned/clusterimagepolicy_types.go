@@ -77,6 +77,24 @@ type KeylessRef struct {
 	CACert *KeyRef `json:"ca-cert,omitempty"`
 }
 
+func (k *KeyRef) UnmarshalJSON(data []byte) error {
+	var publicKeys []*ecdsa.PublicKey
+	var err error
+
+	publicKey := string(data)
+
+	if publicKey != "" {
+		publicKeys, err = ConvertKeyDataToPublicKeys(context.Background(), publicKey)
+		if err != nil {
+			return err
+		}
+	}
+
+	k.PublicKeys = publicKeys
+
+	return nil
+}
+
 func ConvertClusterImagePolicyV1alpha1ToInternal(ctx context.Context, in *v1alpha1.ClusterImagePolicy, rtracker tracker.Interface, secretLister corev1listers.SecretLister) (*ClusterImagePolicy, error) {
 	copyIn := in.DeepCopy()
 	outAuthorities := make([]Authority, 0)
@@ -156,6 +174,7 @@ func convertKeyRefV1Alpha1ToInternal(ctx context.Context, publicKey string) (*Ke
 
 	return &KeyRef{
 		PublicKeys: publicKeys,
+		Data:       publicKey,
 	}, nil
 }
 
